@@ -1,0 +1,65 @@
+{
+    "table_name": "students",
+    "fields": [
+      {
+        "name": "student_id",
+        "type": "SERIAL PRIMARY KEY"
+      },
+      {
+        "name": "school_id",
+        "type": "int NULL"
+      },
+      {
+        "name": "student_name",
+        "type": "VARCHAR(255) NULL"
+      },
+       
+      {
+        "name": "enrollment_no",
+        "type": "VARCHAR(255) NULL"
+      },
+      {
+        "name": "roll_no",
+        "type": "VARCHAR(50) NULL"
+      },
+       {
+        "name": "division",
+        "type": "VARCHAR(100) NULL"
+      },
+         {
+        "name": "standard",
+        "type": "VARCHAR(100) NULL"
+      },
+       {
+        "name": "gender",
+        "type": "VARCHAR(20) NULL"
+      },
+      {
+        "name": "dob",
+        "type": "VARCHAR(20) NULL"
+      },
+       {
+        "name": "father_name",
+        "type": "VARCHAR(255) NULL"
+      }, {
+        "name": "mother_name",
+        "type": "VARCHAR(255) NULL"
+      },
+      {
+        "name": "mobile",
+        "type": "VARCHAR(15) NULL"
+      },
+      {
+        "name": "address",
+        "type": "VARCHAR(255) NULL"
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP DEFAULT NOW()"
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP DEFAULT NOW()"
+      }
+    ]
+  }

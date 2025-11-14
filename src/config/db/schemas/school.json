@@ -1,0 +1,77 @@
+{
+    "table_name": "school",
+    "fields": [
+      {
+        "name": "school_id",
+        "type": "SERIAL PRIMARY KEY"
+      },
+      {
+        "name": "logo",
+        "type": "VARCHAR(255) NULL"
+      },
+      {
+        "name": "school_name",
+        "type": "VARCHAR(100) NOT NULL"
+      },
+      {
+        "name": "number",
+        "type": "VARCHAR(15) NOT NULL"
+      },
+        {
+        "name": "address",
+        "type": "VARCHAR(255) "
+      },
+       {
+        "name": "email",
+        "type": "VARCHAR(150) UNIQUE NOT NULL"
+      },
+      {
+        "name": "password",
+        "type": "VARCHAR(255) NOT NULL"
+      },
+      {
+        "name": "year_of_establishment",
+        "type": "VARCHAR(20)  NULL"
+      },
+      {
+        "name": "total_standard",
+        "type": "VARCHAR(100)  NULL"
+      },
+      {
+        "name": "total_students",
+        "type": "VARCHAR(100)  NULL"
+      },
+      {
+        "name": "total_teachers",
+        "type": "VARCHAR(100)  NULL"
+      },
+      {
+        "name": "total_subjects",
+        "type": "VARCHAR(255)  NULL"
+      },
+       {
+        "name": "plan_id",
+        "type": "int DEFAULT 0"
+      },
+      {
+        "name": "total_gb",
+        "type": "VARCHAR(20)  DEFAULT 0"
+      },
+       {
+        "name": "used_gb",
+        "type": "VARCHAR(20)  DEFAULT 0"
+      },
+      {
+        "name": "status",
+        "type": "BOOLEAN DEFAULT TRUE"
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP DEFAULT NOW()"
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP DEFAULT NOW()"
+      }
+    ]
+  }

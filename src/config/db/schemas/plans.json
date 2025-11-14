@@ -1,0 +1,29 @@
+{
+    "table_name": "plans",
+    "fields": [
+      {
+        "name": "plan_id",
+        "type": "SERIAL PRIMARY KEY"
+      },
+      {
+        "name": "plan_name",
+        "type": "VARCHAR(255) NULL"
+      },
+      {
+        "name": "gb",
+        "type": "VARCHAR(100) NULL"
+      },
+      {
+        "name": "status",
+        "type": "BOOLEAN"
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP DEFAULT NOW()"
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP DEFAULT NOW()"
+      }
+    ]
+  }

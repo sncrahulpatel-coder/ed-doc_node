@@ -1,0 +1,7 @@
+[
+  { "$ref": "./schemas/admin.json" },
+  { "$ref": "./schemas/school.json" },
+  { "$ref": "./schemas/plans.json" },
+  { "$ref": "./schemas/students.json" }
+
+]
