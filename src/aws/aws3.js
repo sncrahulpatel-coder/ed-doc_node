@@ -1,5 +1,5 @@
 
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
@@ -21,7 +21,9 @@ export async function getUploadUrl_aws({ fileName, fileType, folder_name, Unique
   if (!fileType) throw new Error("fileType required");
   if (!UniqueFileName) throw new Error("UniqueFileName required");
 
-  if (!fileType.startsWith("image/")) throw new Error("Only images allowed");
+ if (!(fileType.startsWith("image/") || fileType.includes("pdf"))) {
+    throw new Error("Only images or PDF files are allowed");
+}
 
   const ext = path.extname(fileName) || ".bin";
   const safeFileName = String(UniqueFileName || "unknown").replace(/[^a-zA-Z0-9-_]/g, "-");
@@ -139,3 +141,59 @@ export async function sendMail(to, subject, body) {
 }
 
 
+export async function deleteDoc_aws(key) {
+  if (!key) throw new Error("key required");
+
+  const cmd = new DeleteObjectCommand({
+    Bucket: process.env.S3_BUCKET,
+    Key: key
+  });
+
+  try {
+    await s3.send(cmd);
+    return true; // Deleted successfully
+  } catch (err) {
+    console.error("AWS Delete Error:", err);
+    throw err;
+  }
+}
+
+
+// ✅ Get total folder size in bytes
+export async function getFolderSize_aws(prefix) {
+
+  prefix = `${process.env.isProd === "true" ? "" : "test/" }${prefix}`
+  console.log(prefix);
+  if (!prefix) throw new Error("Prefix (folder key) required");
+
+  const bucket = process.env.S3_BUCKET;
+  let totalSize = 0;
+  let continuationToken = undefined;
+
+  try {
+    while (true) {
+      const params = {
+        Bucket: bucket,
+        Prefix: prefix.endsWith("/") ? prefix : prefix + "/", // ensure folder format
+        ContinuationToken: continuationToken
+      };
+
+      const cmd = new ListObjectsV2Command(params);
+      const res = await s3.send(cmd);
+
+      if (res.Contents) {
+        for (const obj of res.Contents) {
+          totalSize += obj.Size || 0;
+        }
+      }
+
+      if (!res.IsTruncated) break; // no more pages
+      continuationToken = res.NextContinuationToken;
+    }
+
+    return totalSize; // in bytes
+  } catch (err) {
+    console.error("Error getting folder size:", err);
+    throw err;
+  }
+}

@@ -115,4 +115,22 @@ export const SchoolModel = {
     const { rows } = await pool.query(query, values);
     return rows[0];
   },
+  async updateStorage(school_id, bytes) {
+
+  const query = `
+    UPDATE school
+    SET used_gb = 
+        CASE 
+            WHEN used_gb IS NULL THEN GREATEST(0, ($1 / 1024.0 / 1024.0 / 1024.0))
+            ELSE GREATEST(0, (used_gb::numeric + ($1 / 1024.0 / 1024.0 / 1024.0)))
+        END,
+        updated_at = NOW()
+    WHERE school_id = $2
+    RETURNING *;
+  `;
+
+  const { rows } = await pool.query(query, [bytes, school_id]);
+  return rows[0];
+}
+
 };

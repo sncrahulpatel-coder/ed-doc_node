@@ -1,0 +1,34 @@
+{
+    "table_name": "teacher",
+    "fields": [
+      {
+        "name": "teacher_id",
+        "type": "SERIAL PRIMARY KEY"
+      },
+      {
+        "name": "school_id",
+        "type": "int NULL"
+      },
+       {
+        "name": "teacher_School_id",
+        "type": "VARCHAR(100) NOT NULL"
+      },
+      {
+        "name": "teacher_name",
+        "type": "VARCHAR(255) NOT NULL"
+      },
+      {
+        "name": "mobile",
+        "type": "VARCHAR(15) NOT NULL"
+      },
+
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP DEFAULT NOW()"
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP DEFAULT NOW()"
+      }
+    ]
+  }

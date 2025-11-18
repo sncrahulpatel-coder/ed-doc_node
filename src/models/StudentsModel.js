@@ -66,13 +66,18 @@ export const StudentsModel = {
     return rows[0];
   },
    async getBySchoolId(school_id) {
-    const query = `SELECT * FROM students WHERE school_id = $1;`;
+    const query = `SELECT * FROM students WHERE school_id = $1 ORDER BY updated_at DESC;`;
     const { rows } = await pool.query(query, [school_id]);
     return rows;
   },
 async getStudentByEnrolId(enrollment_no) {
     const query = `SELECT * FROM students WHERE enrollment_no = $1;`;
     const { rows } = await pool.query(query, [enrollment_no]);
+    return rows[0];
+  },
+  async getStudentByEnrolIdforUpdate(enrollment_no,student_id) {
+    const query = `SELECT * FROM students WHERE enrollment_no = $1 and student_id != $2;`;
+    const { rows } = await pool.query(query, [enrollment_no,student_id]);
     return rows[0];
   },
   // --------------------------------------------------
