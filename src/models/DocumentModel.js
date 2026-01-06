@@ -55,7 +55,22 @@ export const DocumentModel = {
     const { rows } = await pool.query(query, [school_id, document_type]);
     return rows[0];
   },
-
+  async getByStudentId(school_id, student_id) {
+    const query = `
+      SELECT * FROM document 
+      WHERE school_id = $1 AND student_id = $2;
+    `;
+    const { rows } = await pool.query(query, [school_id, student_id]);
+    return rows;
+  },
+  async getByTeacherId(school_id, teacher_id) {
+    const query = `
+      SELECT * FROM document 
+      WHERE school_id = $1 AND teacher_id = $2;
+    `;
+    const { rows } = await pool.query(query, [school_id, teacher_id]);
+    return rows;
+  },
   // --------------------------------------------------
   // UPDATE DOCUMENT (DYNAMIC FIELDS)
   // --------------------------------------------------
@@ -138,33 +153,33 @@ export const DocumentModel = {
     const { rows } = await pool.query(query, values);
     return rows[0];
   },
-// --------------------------------------------------
-// UPDATE DOCUMENT LIST (ADD FILE TO JSON ARRAY)
-// --------------------------------------------------
-async updateDocumentList(school_id, document_type, file_title, file_url, file_size) {
-  // 1. Check if document exists
-  const queryCheck = `
+  // --------------------------------------------------
+  // UPDATE DOCUMENT LIST (ADD FILE TO JSON ARRAY)
+  // --------------------------------------------------
+  async updateDocumentList(school_id, document_type, file_title, file_url, file_size) {
+    // 1. Check if document exists
+    const queryCheck = `
     SELECT * FROM document 
     WHERE school_id = $1 AND document_type = $2;
   `;
-  const { rows } = await pool.query(queryCheck, [school_id, document_type]);
-  const existing = rows[0];
+    const { rows } = await pool.query(queryCheck, [school_id, document_type]);
+    const existing = rows[0];
 
-  // Prepare new file object
-  const newFile = {
-    title: file_title,
-    url: file_url,
-    size: file_size,
-    uploaded_at: new Date()
-  };
+    // Prepare new file object
+    const newFile = {
+      title: file_title,
+      url: file_url,
+      size: file_size,
+      uploaded_at: new Date()
+    };
 
-  // --------------------------------------------------
-  // CASE 1: DOCUMENT DOES NOT EXIST → CREATE NEW ROW
-  // --------------------------------------------------
-  if (!existing) {
-    const filesArray = [newFile]; // create fresh list
+    // --------------------------------------------------
+    // CASE 1: DOCUMENT DOES NOT EXIST → CREATE NEW ROW
+    // --------------------------------------------------
+    if (!existing) {
+      const filesArray = [newFile]; // create fresh list
 
-    const createQuery = `
+      const createQuery = `
       INSERT INTO document (
         school_id,
         document_type,
@@ -174,27 +189,27 @@ async updateDocumentList(school_id, document_type, file_title, file_url, file_si
       RETURNING *;
     `;
 
-    const { rows } = await pool.query(createQuery, [
-      school_id,
-      document_type,
-      JSON.stringify(filesArray),
-    ]);
+      const { rows } = await pool.query(createQuery, [
+        school_id,
+        document_type,
+        JSON.stringify(filesArray),
+      ]);
 
-    return rows[0];
-  }
+      return rows[0];
+    }
 
-  // --------------------------------------------------
-  // CASE 2: DOCUMENT EXISTS → PUSH FILE INTO JSON ARRAY
-  // --------------------------------------------------
-  let updatedFiles = [];
+    // --------------------------------------------------
+    // CASE 2: DOCUMENT EXISTS → PUSH FILE INTO JSON ARRAY
+    // --------------------------------------------------
+    let updatedFiles = [];
 
-  if (existing.files && Array.isArray(existing.files)) {
-    updatedFiles = [...existing.files, newFile];
-  } else {
-    updatedFiles = [newFile]; // If null or invalid
-  }
+    if (existing.files && Array.isArray(existing.files)) {
+      updatedFiles = [...existing.files, newFile];
+    } else {
+      updatedFiles = [newFile]; // If null or invalid
+    }
 
-  const updateQuery = `
+    const updateQuery = `
     UPDATE document
     SET files = $1,
         updated_at = NOW()
@@ -202,76 +217,76 @@ async updateDocumentList(school_id, document_type, file_title, file_url, file_si
     RETURNING *;
   `;
 
-  const { rows: updateRows } = await pool.query(updateQuery, [
-    JSON.stringify(updatedFiles),
-    existing.document_id,
-  ]);
+    const { rows: updateRows } = await pool.query(updateQuery, [
+      JSON.stringify(updatedFiles),
+      existing.document_id,
+    ]);
 
-  return updateRows[0];
-}
-,
-async updateDocumentByIndex(
-  school_id,
-  document_type,
-  file_title,
-  file_url,
-  file_size,
-  fileIndex
-) {
+    return updateRows[0];
+  }
+  ,
+  async updateDocumentByIndex(
+    school_id,
+    document_type,
+    file_title,
+    file_url,
+    file_size,
+    fileIndex
+  ) {
 
-  // 1. Fetch existing document
-  const queryCheck = `
+    // 1. Fetch existing document
+    const queryCheck = `
     SELECT * FROM document 
     WHERE school_id = $1 AND document_type = $2;
   `;
-  const { rows } = await pool.query(queryCheck, [school_id, document_type]);
-  const existing = rows[0];
+    const { rows } = await pool.query(queryCheck, [school_id, document_type]);
+    const existing = rows[0];
 
-  // New file object (to replace)
-  const updatedFile = {
-    title: file_title,
-    url: file_url,
-    size: file_size,
-    uploaded_at: new Date()
-  };
+    // New file object (to replace)
+    const updatedFile = {
+      title: file_title,
+      url: file_url,
+      size: file_size,
+      uploaded_at: new Date()
+    };
 
-  // --------------------------------------------------
-  // CASE 1: DOCUMENT DOES NOT EXIST → CREATE NEW
-  // No "old url" exists, return null
-  // --------------------------------------------------
-  if (!existing) {
-    const fileArray = [];
-    fileArray[fileIndex] = updatedFile;
+    // --------------------------------------------------
+    // CASE 1: DOCUMENT DOES NOT EXIST → CREATE NEW
+    // No "old url" exists, return null
+    // --------------------------------------------------
+    if (!existing) {
+      const fileArray = [];
+      fileArray[fileIndex] = updatedFile;
 
-    const createQuery = `
+      const createQuery = `
       INSERT INTO document (school_id, document_type, files)
       VALUES ($1, $2, $3)
       RETURNING *;
     `;
 
-    await pool.query(createQuery, [
-      school_id,
-      document_type,
-      JSON.stringify(fileArray),
-    ]);
+      await pool.query(createQuery, [
+        school_id,
+        document_type,
+        JSON.stringify(fileArray),
+      ]);
 
-    return null; // no old URL
-  }
+      return null; // no old URL
+    }
 
-  // --------------------------------------------------
-  // CASE 2: UPDATE INDEX AND RETURN OLD URL
-  // --------------------------------------------------
-  let currentFiles = existing.files && Array.isArray(existing.files)
-    ? [...existing.files]
-    : [];
+    // --------------------------------------------------
+    // CASE 2: UPDATE INDEX AND RETURN OLD URL
+    // --------------------------------------------------
+    let currentFiles = existing.files && Array.isArray(existing.files)
+      ? [...existing.files]
+      : [];
 
-  // Store old URL BEFORE updating
-  const oldUrl = currentFiles[fileIndex]?.url || null;
+    // Store old URL BEFORE updating
+    const oldUrl = currentFiles[fileIndex]?.url || null;
 
-  // Update the index
-  currentFiles[fileIndex] = updatedFile;
+    // Update the index
+    currentFiles[fileIndex] = updatedFile;
 
-  const updateQuery = `
+    const updateQuery = `
     UPDATE document
     SET files = $1,
         updated_at = NOW()
@@ -279,45 +294,45 @@ async updateDocumentByIndex(
     RETURNING *;
   `;
 
-  await pool.query(updateQuery, [
-    JSON.stringify(currentFiles),
-    existing.document_id,
-  ]);
+    await pool.query(updateQuery, [
+      JSON.stringify(currentFiles),
+      existing.document_id,
+    ]);
 
-  // Return OLD url
-  return oldUrl;
-},
-// --------------------------------------------------
-// DELETE FILE BY INDEX (RETURN OLD URL)
-// --------------------------------------------------
-async deleteDocumentByIndex(school_id, document_type, fileIndex) {
+    // Return OLD url
+    return oldUrl;
+  },
+  // --------------------------------------------------
+  // DELETE FILE BY INDEX (RETURN OLD URL)
+  // --------------------------------------------------
+  async deleteDocumentByIndex(school_id, document_type, fileIndex) {
 
-  // 1. Fetch document
-  const queryCheck = `
+    // 1. Fetch document
+    const queryCheck = `
     SELECT * FROM document 
     WHERE school_id = $1 AND document_type = $2;
   `;
-  const { rows } = await pool.query(queryCheck, [school_id, document_type]);
-  const existing = rows[0];
+    const { rows } = await pool.query(queryCheck, [school_id, document_type]);
+    const existing = rows[0];
 
-  // If document not found → nothing to delete
-  if (!existing) return null;
+    // If document not found → nothing to delete
+    if (!existing) return null;
 
-  let currentFiles = existing.files && Array.isArray(existing.files)
-    ? [...existing.files]
-    : [];
+    let currentFiles = existing.files && Array.isArray(existing.files)
+      ? [...existing.files]
+      : [];
 
-  // If index is invalid OR empty → return null
-  const oldUrl = currentFiles[fileIndex]?.url || null;
-  const sizeOldFile = currentFiles[fileIndex]?.size || null;
+    // If index is invalid OR empty → return null
+    const oldUrl = currentFiles[fileIndex]?.url || null;
+    const sizeOldFile = currentFiles[fileIndex]?.size || null;
 
-  if (oldUrl === null) return null;
+    if (oldUrl === null) return null;
 
-  // Remove index
-  currentFiles.splice(fileIndex, 1);
+    // Remove index
+    currentFiles.splice(fileIndex, 1);
 
-  // Update DB
-  const updateQuery = `
+    // Update DB
+    const updateQuery = `
     UPDATE document
     SET files = $1,
         updated_at = NOW()
@@ -325,13 +340,423 @@ async deleteDocumentByIndex(school_id, document_type, fileIndex) {
     RETURNING *;
   `;
 
-  await pool.query(updateQuery, [
-    JSON.stringify(currentFiles),
-    existing.document_id,
+    await pool.query(updateQuery, [
+      JSON.stringify(currentFiles),
+      existing.document_id,
+    ]);
+
+    // Return the deleted file’s old URL
+    return { lastDocumentUrl: oldUrl, sizeOldFile };
+  }, async updateStudentDocumentList(school_id, document_type, file_title, file_url, file_size, year, student_id) {
+    // 1. Check if document exists
+    const queryCheck = `
+    SELECT * FROM document 
+    WHERE school_id = $1 AND document_type = $2 AND student_id = $3;
+  `;
+    const { rows } = await pool.query(queryCheck, [school_id, document_type, student_id]);
+    const existing = rows[0];
+
+    // Prepare new file object
+    const newFile = {
+      title: file_title,
+      url: file_url,
+      size: file_size,
+      year,
+      uploaded_at: new Date()
+    };
+
+    // --------------------------------------------------
+    // CASE 1: DOCUMENT DOES NOT EXIST → CREATE NEW ROW
+    // --------------------------------------------------
+    if (!existing) {
+      const filesArray = [newFile]; // create fresh list
+
+      const createQuery = `
+      INSERT INTO document (
+        school_id,
+        student_id,
+        document_type,
+        files
+      )
+      VALUES ($1, $2, $3,$4)
+      RETURNING *;
+    `;
+
+      const { rows } = await pool.query(createQuery, [
+        school_id,
+        student_id,
+        document_type,
+        JSON.stringify(filesArray),
+      ]);
+
+      return rows[0];
+    }
+
+    // --------------------------------------------------
+    // CASE 2: DOCUMENT EXISTS → PUSH FILE INTO JSON ARRAY
+    // --------------------------------------------------
+    let updatedFiles = [];
+
+    if (existing.files && Array.isArray(existing.files)) {
+      updatedFiles = [...existing.files, newFile];
+    } else {
+      updatedFiles = [newFile]; // If null or invalid
+    }
+
+    const updateQuery = `
+    UPDATE document
+    SET files = $1,
+        updated_at = NOW()
+    WHERE document_id = $2
+    RETURNING *;
+  `;
+
+    const { rows: updateRows } = await pool.query(updateQuery, [
+      JSON.stringify(updatedFiles),
+      existing.document_id,
+    ]);
+
+    return updateRows[0];
+  }
+  ,
+  async updateStudentDocumentByIndex(
+  school_id,
+  student_id,
+  document_type,
+  file_title,
+  file_url,     // optional → update only when provided
+  file_size,
+  fileIndex,
+  year
+) {
+
+  // 1. Fetch existing document
+  const queryCheck = `
+      SELECT * FROM document 
+      WHERE school_id = $1 AND document_type = $2 AND student_id = $3
+  `;
+
+  const { rows } = await pool.query(queryCheck, [
+    school_id,
+    document_type,
+    student_id
   ]);
 
-  // Return the deleted file’s old URL
-  return {lastDocumentUrl:oldUrl,sizeOldFile};
+  const existing = rows[0];
+
+  // New file base structure
+  const newFileData = {
+    title: file_title,
+    year,
+    uploaded_at: new Date()
+  };
+
+  // --------------------------------------------------
+  // CASE 1: DOCUMENT DOES NOT EXIST → CREATE NEW
+  // --------------------------------------------------
+  if (!existing) {
+    const fileArray = [];
+
+    newFileData.url = file_url || null;
+    newFileData.size = file_size || null;
+
+    fileArray[fileIndex] = newFileData;
+
+    const createQuery = `
+      INSERT INTO document (school_id, student_id, document_type, files)
+      VALUES ($1, $2, $3, $4)
+    `;
+
+    await pool.query(createQuery, [
+      school_id,
+      student_id,
+      document_type,
+      JSON.stringify(fileArray)
+    ]);
+
+    return null; // no old url
+  }
+
+  // --------------------------------------------------
+  // CASE 2: DOCUMENT EXISTS → UPDATE INDEX
+  // --------------------------------------------------
+  const files = existing.files || [];
+
+  const oldFile = files[fileIndex] || {};
+
+  const oldUrl = oldFile.url || null;
+  const oldSize = oldFile.size || null;
+
+  // Update logic
+  newFileData.url  = file_url ? file_url : oldUrl;
+  newFileData.size = file_size ? file_size : oldSize;
+
+  // Replace file at index
+  files[fileIndex] = newFileData;
+
+  const updateQuery = `
+    UPDATE document 
+    SET files = $1, updated_at = NOW()
+    WHERE document_id = $2
+  `;
+
+  await pool.query(updateQuery, [
+    JSON.stringify(files),
+    existing.document_id
+  ]);
+
+  // Return old URL only when replaced
+  return file_url ? oldUrl : null;
 }
+, async deleteStudentDocumentByIndex(school_id, student_id, document_type, fileIndex) {
+
+    // 1. Fetch document
+    const queryCheck = `
+    SELECT * FROM document 
+    WHERE school_id = $1 AND document_type = $2 AND student_id = $3;
+  `;
+    const { rows } = await pool.query(queryCheck, [school_id, document_type, student_id]);
+    const existing = rows[0];
+
+    // If document not found → nothing to delete
+    if (!existing) return null;
+
+    let currentFiles = existing.files && Array.isArray(existing.files)
+      ? [...existing.files]
+      : [];
+
+    // If index is invalid OR empty → return null
+    const oldUrl = currentFiles[fileIndex]?.url || null;
+    const sizeOldFile = currentFiles[fileIndex]?.size || null;
+
+    if (oldUrl === null) return null;
+
+    // Remove index
+    currentFiles.splice(fileIndex, 1);
+
+    // Update DB
+    const updateQuery = `
+    UPDATE document
+    SET files = $1,
+        updated_at = NOW()
+    WHERE document_id = $2
+    RETURNING *;
+  `;
+
+    await pool.query(updateQuery, [
+      JSON.stringify(currentFiles),
+      existing.document_id,
+    ]);
+
+    // Return the deleted file’s old URL
+    return { lastDocumentUrl: oldUrl, sizeOldFile };
+  },
+  async updateTeacherDocumentList(school_id, document_type, file_title, file_url, file_size, year, teacher_id) {
+    // 1. Check if document exists
+    const queryCheck = `
+    SELECT * FROM document 
+    WHERE school_id = $1 AND document_type = $2 AND teacher_id = $3;
+  `;
+    const { rows } = await pool.query(queryCheck, [school_id, document_type, teacher_id]);
+    const existing = rows[0];
+
+    // Prepare new file object
+    const newFile = {
+      title: file_title,
+      url: file_url,
+      size: file_size,
+      year,
+      uploaded_at: new Date()
+    };
+
+    // --------------------------------------------------
+    // CASE 1: DOCUMENT DOES NOT EXIST → CREATE NEW ROW
+    // --------------------------------------------------
+    if (!existing) {
+      const filesArray = [newFile]; // create fresh list
+
+      const createQuery = `
+      INSERT INTO document (
+        school_id,
+        teacher_id,
+        document_type,
+        files
+      )
+      VALUES ($1, $2, $3,$4)
+      RETURNING *;
+    `;
+
+      const { rows } = await pool.query(createQuery, [
+        school_id,
+        teacher_id,
+        document_type,
+        JSON.stringify(filesArray),
+      ]);
+
+      return rows[0];
+    }
+
+    // --------------------------------------------------
+    // CASE 2: DOCUMENT EXISTS → PUSH FILE INTO JSON ARRAY
+    // --------------------------------------------------
+    let updatedFiles = [];
+
+    if (existing.files && Array.isArray(existing.files)) {
+      updatedFiles = [...existing.files, newFile];
+    } else {
+      updatedFiles = [newFile]; // If null or invalid
+    }
+
+    const updateQuery = `
+    UPDATE document
+    SET files = $1,
+        updated_at = NOW()
+    WHERE document_id = $2
+    RETURNING *;
+  `;
+
+    const { rows: updateRows } = await pool.query(updateQuery, [
+      JSON.stringify(updatedFiles),
+      existing.document_id,
+    ]);
+
+    return updateRows[0];
+  },
+  async updateTeacherDocumentByIndex(
+    school_id,
+    teacher_id,
+    document_type,
+    file_title,
+    file_url,     // optional → update only when present
+    file_size,
+    fileIndex,
+    year
+  ) {
+    // 1. Fetch existing document
+    const queryCheck = `
+    SELECT * FROM document 
+    WHERE school_id = $1 AND document_type = $2 AND teacher_id = $3
+  `;
+
+    const { rows } = await pool.query(queryCheck, [
+      school_id,
+      document_type,
+      teacher_id
+    ]);
+
+    const existing = rows[0];
+
+    // New file data (URL optional)
+    const newFileData = {
+      title: file_title,
+      year,
+      uploaded_at: new Date()
+    };
+    // --------------------------------------------------
+    // CASE 1: DOCUMENT DOES NOT EXIST → CREATE NEW
+    // --------------------------------------------------
+    if (!existing) {
+      const fileArray = [];
+
+      // If file_url exists → set URL, else NULL
+      newFileData.url = file_url || null;
+
+      fileArray[fileIndex] = newFileData;
+
+      const createQuery = `
+      INSERT INTO document (school_id, teacher_id, document_type, files)
+      VALUES ($1, $2, $3, $4)
+    `;
+
+      await pool.query(createQuery, [
+        school_id,
+        teacher_id,
+        document_type,
+        JSON.stringify(fileArray)
+      ]);
+
+      return null;
+    }
+
+    // --------------------------------------------------
+    // CASE 2: DOCUMENT EXISTS → UPDATE INDEX
+    // --------------------------------------------------
+    const files = existing.files || [];
+
+    // If file exists at index, get old file data
+    const oldFile = files[fileIndex] || {};
+
+    const oldUrl = oldFile.url || null;
+    const oldsize= oldFile.size || null;
+
+    // ----------------------
+    // UPDATE RULE:
+    // ----------------------
+    // If file_url exists → replace URL
+    // If file_url is NOT provided → keep old URL
+    // ----------------------
+    newFileData.url = file_url ? file_url : oldUrl;
+    newFileData.size = file_size ? file_size : oldsize;
+
+    // Replace file at index
+    files[fileIndex] = newFileData;
+    
+    const updateQuery = `
+    UPDATE document 
+    SET files = $1
+    WHERE document_id = $2
+  `;
+
+    await pool.query(updateQuery, [
+      JSON.stringify(files),
+      existing.document_id
+    ]);
+
+    // Return old URL only when a new URL is uploaded
+    return file_url ? oldUrl : null;
+  }, async deleteTeacherDocumentByIndex(school_id, teacher_id, document_type, fileIndex) {
+
+
+    // 1. Fetch document
+    const queryCheck = `
+    SELECT * FROM document 
+    WHERE school_id = $1 AND document_type = $2 AND teacher_id = $3;
+  `;
+    const { rows } = await pool.query(queryCheck, [school_id, document_type, teacher_id]);
+    const existing = rows[0];
+
+    // If document not found → nothing to delete
+    if (!existing) return null;
+
+    let currentFiles = existing.files && Array.isArray(existing.files)
+      ? [...existing.files]
+      : [];
+
+    // If index is invalid OR empty → return null
+    const oldUrl = currentFiles[fileIndex]?.url || null;
+    const sizeOldFile = currentFiles[fileIndex]?.size || null;
+
+    if (oldUrl === null) return null;
+
+    // Remove index
+    currentFiles.splice(fileIndex, 1);
+
+    // Update DB
+    const updateQuery = `
+    UPDATE document
+    SET files = $1,
+        updated_at = NOW()
+    WHERE document_id = $2
+    RETURNING *;
+  `;
+
+    await pool.query(updateQuery, [
+      JSON.stringify(currentFiles),
+      existing.document_id,
+    ]);
+
+    // Return the deleted file’s old URL
+    return { lastDocumentUrl: oldUrl, sizeOldFile };
+  }
 
 };

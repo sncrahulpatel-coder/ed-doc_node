@@ -18,6 +18,7 @@ export const StudentsModel = {
     mother_name,
     mobile,
     address,
+    profile
   }) {
     const query = `
       INSERT INTO students (
@@ -32,9 +33,10 @@ export const StudentsModel = {
         father_name,
         mother_name,
         mobile,
-        address
+        address,
+        profile
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *;
     `;
 
@@ -51,6 +53,7 @@ export const StudentsModel = {
       mother_name,
       mobile,
       address,
+      profile
     ];
 
     const { rows } = await pool.query(query, values);

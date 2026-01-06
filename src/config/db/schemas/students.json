@@ -52,6 +52,9 @@
       {
         "name": "address",
         "type": "VARCHAR(255) NULL"
+      }, {
+        "name": "profile",
+        "type": "VARCHAR(255) NULL"
       },
       {
         "name": "created_at",

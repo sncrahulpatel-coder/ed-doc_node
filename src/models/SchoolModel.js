@@ -70,6 +70,11 @@ export const SchoolModel = {
     const { rows } = await pool.query(query);
     return rows;
   },
+ async getAllSchools_OnlyId() {
+    const query = `SELECT school_id FROM school ORDER BY school_id;`;
+    const { rows } = await pool.query(query);
+    return rows;
+  },
 
   // Update school by ID
  async updateSchool(school_id, fields) {

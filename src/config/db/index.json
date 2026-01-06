@@ -4,6 +4,7 @@
   { "$ref": "./schemas/plans.json" },
   { "$ref": "./schemas/students.json" },
   { "$ref": "./schemas/teacher.json" },
-  { "$ref": "./schemas/document.json" }
-
+  { "$ref": "./schemas/document.json" },
+  { "$ref": "./schemas/schoolTemplate.json" },
+  { "$ref": "./schemas/uploadDocument.json" }
 ]

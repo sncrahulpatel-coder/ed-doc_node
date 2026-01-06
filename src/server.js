@@ -13,6 +13,8 @@ import logMiddleware from "./utils/logMiddleware.js";
 import ipLogger from "./config/ip_logger.js";
 import securityLogRouter from "./config/securityLog.js";
 import { login } from "./controller/authControllers.js";
+import "./controller/cron.js";
+import { extractFormFields } from "./ChatGPT/chatGPT.js";
 
 const app = express();
 
@@ -46,7 +48,7 @@ app.use(limiter);       // Apply rate limiter first
 app.use(express.json());
 app.use(helmet());
 app.use(cors({
-  origin: process.env.isProd == 'true' ? "https://lms.snckids.in" : "http://localhost:5175"
+  origin: process.env.isProd == 'true' ? "https://lms.snckids.in" : "*"
 }));
 app.use(morgan("dev"));
 app.use(rrnMiddleware);
@@ -60,10 +62,20 @@ app.use("/api/school", schoolRoutes);
 app.use("/api/securityError", securityLogRouter);
 app.post('/login',login)
 
-
 app.get("/", (req, res) => {
   res.status(200).json({ message: "Welcome to the API 🚀" });
 });
+
+app.get('/GptCheck', async (req, res) => {
+  const responce = await extractFormFields('uploads/formImages/demo.jpg');
+  res.status(200).json({ message: "GPT is working fine 🚀" ,responce});
+})
+
+
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
 
 // Error handler
 app.use(errorHandler);

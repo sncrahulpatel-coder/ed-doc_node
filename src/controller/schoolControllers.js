@@ -1,12 +1,16 @@
 import apiResponse from "../utils/apiResponse.js";
 import { SchoolModel } from "../models/schoolModel.js";
-import { deleteDoc_aws, getCachedViewUrl, getFolderSize_aws, getUploadUrl_aws } from "../aws/aws3.js";
+import { deleteDoc_aws, downloadMultipleFromS3, getCachedViewUrl, getDownloadUrl_aws, getFolderSize_aws, getUploadUrl_aws, getViewUrl_aws_download } from "../aws/aws3.js";
 import { PlansModel } from "../models/PlansModel.js";
 import { StudentsModel } from "../models/StudentsModel.js";
 import fs from "fs";
 import xlsx from "xlsx";
 import { TeachersModel } from "../models/TeachersModel.js";
 import { DocumentModel } from "../models/DocumentModel.js";
+import { SchoolTemplateModel } from "../models/schoolTemplateModel.js";
+import { UploadDocumentModel } from "../models/UploadDocumentModel.js";
+import { extractFormFields_aws } from "../ChatGPT/chatGPT.js";
+import fillTemplate from "./ScenCopyGenerater.js";
 
 export const dashboardData = async (req, res, next) => {
   try {
@@ -34,7 +38,11 @@ export const addStudent = async (req, res, next) => {
       fatherName,
       motherName,
       mobile,
-      address
+      address,
+      fileName,
+      extension,
+      fileSize,
+      fileType
     } = req.body;
 
     // -------------------------------
@@ -123,25 +131,55 @@ export const addStudent = async (req, res, next) => {
     // -------------------------------
     // 4️⃣ SAVE TO DATABASE
     // -------------------------------
-    await StudentsModel.createStudent({
-      school_id: req.user.id,
-      student_name: studentName,
-      enrollment_no: enrollmentNo,
-      roll_no: rollNo,
-      division,
-      standard: Standard,
-      gender,
-      dob,
-      father_name: fatherName,
-      mother_name: motherName || "",
-      mobile,
-      address
-    });
+
+    if (fileName) {
+      const { uploadUrl, key } = await getUploadUrl_aws({ fileName, fileType, folder_name: 'school_' + req.user.id + "/" + enrollmentNo, UniqueFileName: 'profile' });
+
+      const sizeMB = fileSize / (1024 * 1024); // Convert to MB
+      if (sizeMB > 1) {
+        throw new Error("50 MB Max")
+      }
+
+      await StudentsModel.createStudent({
+        school_id: req.user.id,
+        student_name: studentName,
+        enrollment_no: enrollmentNo,
+        roll_no: rollNo,
+        division,
+        standard: Standard,
+        gender,
+        dob,
+        father_name: fatherName,
+        mother_name: motherName || "",
+        mobile,
+        address,
+        profile: key
+      });
+      return res.json(apiResponse(true, "Student Added Successfully", { uploadUrl }, req.rrn));
+
+    } else {
+
+      await StudentsModel.createStudent({
+        school_id: req.user.id,
+        student_name: studentName,
+        enrollment_no: enrollmentNo,
+        roll_no: rollNo,
+        division,
+        standard: Standard,
+        gender,
+        dob,
+        father_name: fatherName,
+        mother_name: motherName || "",
+        mobile,
+        address
+      });
+      return res.json(apiResponse(true, "Student Added Successfully", {}, req.rrn));
+
+    }
 
     // -------------------------------
     // 5️⃣ SUCCESS RESPONSE
     // -------------------------------
-    return res.json(apiResponse(true, "Student Added Successfully", {}, req.rrn));
 
   } catch (err) {
     next(err);
@@ -347,7 +385,16 @@ export const getStudentList = async (req, res, next) => {
 
     const data = await StudentsModel.getBySchoolId(req.user.id);
 
-    return res.json(apiResponse(true, "School Data", data, req.rrn));
+
+    const updatedData = await Promise.all(
+      data.map(async (item) => {
+        if (item.profile) {
+          item.profile = await getCachedViewUrl(item.profile);
+        }
+        return item;
+      })
+    );
+    return res.json(apiResponse(true, "School Data", updatedData, req.rrn));
 
   } catch (err) {
     next(err);
@@ -416,7 +463,11 @@ export const studentUpdate = async (req, res, next) => {
       fatherName,
       motherName,
       mobile,
-      address
+      address,
+      fileName,
+      extension,
+      fileSize,
+      fileType
     } = req.body;
 
     const { id } = req.params;
@@ -426,6 +477,8 @@ export const studentUpdate = async (req, res, next) => {
         .status(400)
         .json(apiResponse(false, `Id Required`, [], req.rrn));
     }
+
+
 
     const requiredFields = {
       enrollmentNo,
@@ -503,7 +556,7 @@ export const studentUpdate = async (req, res, next) => {
         .json(apiResponse(false, "Admission No / Enrollment No Already Exist", [], req.rrn));
     }
 
-    await StudentsModel.updateStudent(id, {
+    const dataUpdate = {
       enrollment_no: enrollmentNo,
       standard: Standard,
       division,
@@ -514,10 +567,24 @@ export const studentUpdate = async (req, res, next) => {
       father_name: fatherName,
       mother_name: motherName,
       mobile,
-      address
-    });
+      address,
+    }
 
-    return res.json(apiResponse(true, "Student Updated", {}, req.rrn));
+    if (fileName) {
+      const { uploadUrl, key } = await getUploadUrl_aws({ fileName, fileType, folder_name: 'school_' + req.user.id + "/" + enrollmentNo, UniqueFileName: 'profile' });
+
+      const sizeMB = fileSize / (1024 * 1024); // Convert to MB
+      if (sizeMB > 1) {
+        throw new Error("50 MB Max")
+      }
+
+      await StudentsModel.updateStudent(id, { ...dataUpdate, profile: key });
+      return res.json(apiResponse(true, "Student Updated", { uploadUrl }, req.rrn));
+    } else {
+      await StudentsModel.updateStudent(id, dataUpdate);
+      return res.json(apiResponse(true, "Student Updated", {}, req.rrn));
+    }
+
 
   } catch (err) {
     next(err); // forward error to middleware
@@ -579,7 +646,7 @@ export const uploadDocument = async (req, res, next) => {
 
     // Check storage limit
     if (usedGBNumeric + fileSizeInGB > totalGBNumeric) {
-       return res
+      return res
         .status(400)
         .json(apiResponse(false, "Storage limit exceeded. Please upgrade your plan or delete old files.", [], req.rrn));
     }
@@ -594,7 +661,7 @@ export const uploadDocument = async (req, res, next) => {
     await DocumentModel.updateDocumentList(req.user.id, type, title, key, fileSize);
     await SchoolModel.updateStorage(req.user.id, fileSize)
 
-    return res.json(apiResponse(true, "Teacher Updated", { uploadUrl }, req.rrn));
+    return res.json(apiResponse(true, "Document Uploaded", { uploadUrl }, req.rrn));
 
   } catch (err) {
     next(err); // forward error to middleware
@@ -652,7 +719,7 @@ export const UpdateDocument = async (req, res, next) => {
     if (!fileName) throw new Error("fileName is missing")
     if (fileIndex < 0) throw new Error("fileIndex is missing")
 
-       const { total_gb, used_gb } = await SchoolModel.getSchoolById(req.user.id);
+    const { total_gb, used_gb } = await SchoolModel.getSchoolById(req.user.id);
 
 
     // Convert bytes → GB (float)
@@ -664,11 +731,11 @@ export const UpdateDocument = async (req, res, next) => {
 
     // Check storage limit
     if (usedGBNumeric + fileSizeInGB > totalGBNumeric) {
-       return res
+      return res
         .status(400)
         .json(apiResponse(false, "Storage limit exceeded. Please upgrade your plan or delete old files.", [], req.rrn));
     }
-    
+
 
 
     const sizeMB = fileSize / (1024 * 1024); // Convert to MB
@@ -690,16 +757,205 @@ export const UpdateDocument = async (req, res, next) => {
 };
 
 
-export const deleteDocument = async (req, res, next) => {
+// export const deleteDocument = async (req, res, next) => {
+
+//   try {
+
+//     const { id, type } = req.body;
+//     if (!type) throw new Error("type is missing")
+//     if (id < 0) throw new Error("fileIndex is missing")
+
+//     const fileIndex = id
+//     const { lastDocumentUrl, sizeOldFile } = await DocumentModel.deleteDocumentByIndex(req.user.id, type, fileIndex);
+
+//     await deleteDoc_aws(lastDocumentUrl);
+
+//     // const schoolStorageBytes = await getFolderSize_aws('school_'+req.user.id)
+//     // const in_gb = schoolStorageBytes/ 1024.0 / 1024.0 / 1024.0;
+//     await SchoolModel.updateStorage(req.user.id, -sizeOldFile)
+
+
+//     return res.json(apiResponse(true, "Document Deleted", {}, req.rrn));
+
+//   } catch (err) {
+//     next(err); // forward error to middleware
+//   }
+// };
+
+
+
+export const studentDocumentUpload = async (req, res, next) => {
 
   try {
 
-    const { id, type } = req.body;
+    const { year, student_id, title, type, fileType, fileSize, extension, fileName, enrollment_no } = req.body;
+
+    if (!year) throw new Error("year is missing")
+    if (!student_id) throw new Error("Student ID is missing")
+    if (!title) throw new Error("title is missing")
+    if (!type) throw new Error("type is missing")
+    if (!fileType) throw new Error("fileType is missing")
+    if (!fileSize) throw new Error("fileSize is missing")
+    if (!extension) throw new Error("extension is missing")
+    if (!fileName) throw new Error("fileName is missing")
+    if (!enrollment_no) throw new Error("enrollment_no is missing")
+
+    const { total_gb, used_gb } = await SchoolModel.getSchoolById(req.user.id);
+
+
+    // Convert bytes → GB (float)
+    const fileSizeInGB = fileSize / (1024 * 1024 * 1024);
+
+    // Convert used_gb to number (it may be string)
+    const usedGBNumeric = Number(used_gb) || 0;
+    const totalGBNumeric = Number(total_gb) || 0;
+
+    // Check storage limit
+    if (usedGBNumeric + fileSizeInGB > totalGBNumeric) {
+      return res
+        .status(400)
+        .json(apiResponse(false, "Storage limit exceeded. Please upgrade your plan or delete old files.", [], req.rrn));
+    }
+
+    const sizeMB = fileSize / (1024 * 1024); // Convert to MB
+    if (sizeMB > 50) {
+      throw new Error("50 MB Max")
+    }
+
+    const { uploadUrl, key } = await getUploadUrl_aws({ fileName, fileType, folder_name: 'school_' + req.user.id + "/S_" + student_id, UniqueFileName: type + "_" + req.rrn });
+
+    await DocumentModel.updateStudentDocumentList(req.user.id, type, title, key, fileSize, year, student_id);
+    await SchoolModel.updateStorage(req.user.id, fileSize)
+
+    return res.json(apiResponse(true, "Document Uplaoded", { uploadUrl }, req.rrn));
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+
+
+export const getStudentDocument = async (req, res, next) => {
+
+  try {
+
+    const { student_id } = req.body;
+    if (!student_id) throw new Error("Student Id is missing")
+
+    const datas = await DocumentModel.getByStudentId(req.user.id, student_id);
+
+    if (!datas || datas.length === 0) {
+      return res.json(apiResponse(true, "Document List", [], req.rrn));
+    }
+
+    // final output array
+    let allFiles = [];
+
+    for (const data of datas) {
+      if (!data.files || data.files.length === 0) continue;
+
+      const updatedFiles = await Promise.all(
+        data.files.map(async (item, i) => {
+          item.o_url = item.url;
+          item.download_url = await getDownloadUrl_aws(item.url);
+          item.url = await getCachedViewUrl(item.url);
+          item.type = data.document_type
+          item.index = i
+          return item;
+        })
+      );
+
+      allFiles.push(...updatedFiles);
+    }
+
+    return res.json(apiResponse(true, "Document List", allFiles, req.rrn));
+
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+
+export const studentDocumentUpdate = async (req, res, next) => {
+
+  try {
+
+    const { title, year, type, student_id, fileType, fileSize, extension, fileName, index, enrollment_no } = req.body;
+
+    const fileIndex = index;
+
+    if (!title) throw new Error("title is missing")
+    if (!year) throw new Error("year is missing")
+    if (!type) throw new Error("type is missing")
+    if (!student_id) throw new Error("student id is missing")
+
+    if (!enrollment_no) throw new Error("enrollment_no is missing")
+
+    if (fileType && fileName) {
+
+      if (!fileType) throw new Error("fileType is missing")
+      if (!fileSize) throw new Error("fileSize is missing")
+      if (!extension) throw new Error("extension is missing")
+      if (!fileName) throw new Error("fileName is missing")
+
+      if (fileIndex < 0) throw new Error("fileIndex is missing")
+
+      const { total_gb, used_gb } = await SchoolModel.getSchoolById(req.user.id);
+
+
+      // Convert bytes → GB (float)
+      const fileSizeInGB = fileSize / (1024 * 1024 * 1024);
+
+      // Convert used_gb to number (it may be string)
+      const usedGBNumeric = Number(used_gb) || 0;
+      const totalGBNumeric = Number(total_gb) || 0;
+
+      // Check storage limit
+      if (usedGBNumeric + fileSizeInGB > totalGBNumeric) {
+        return res
+          .status(400)
+          .json(apiResponse(false, "Storage limit exceeded. Please upgrade your plan or delete old files.", [], req.rrn));
+      }
+
+
+
+      const sizeMB = fileSize / (1024 * 1024); // Convert to MB
+      if (sizeMB > 50) {
+        throw new Error("50 MB Max")
+      }
+
+      const { uploadUrl, key } = await getUploadUrl_aws({ fileName, fileType, folder_name: 'school_' + req.user.id + "/S_" + student_id, UniqueFileName: type + "_" + req.rrn });
+
+      const lastDocumentUrl = await DocumentModel.updateStudentDocumentByIndex(req.user.id, student_id, type, title, key, fileSize, fileIndex, year);
+      await deleteDoc_aws(lastDocumentUrl);
+      await SchoolModel.updateStorage(req.user.id, fileSize)
+      return res.json(apiResponse(true, "Document Updated", { uploadUrl }, req.rrn));
+    } else {
+      await DocumentModel.updateStudentDocumentByIndex(req.user.id, student_id, type, title, null, null, fileIndex, year);
+      return res.json(apiResponse(true, "Document Updated", {}, req.rrn));
+
+    }
+
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+
+export const deleteStudentDocument = async (req, res, next) => {
+
+  try {
+
+    const { id, type, student_id } = req.body;
+    if (!student_id) throw new Error("student id is missing")
     if (!type) throw new Error("type is missing")
     if (id < 0) throw new Error("fileIndex is missing")
 
     const fileIndex = id
-    const {lastDocumentUrl,sizeOldFile} = await DocumentModel.deleteDocumentByIndex(req.user.id, type, fileIndex);
+    const { lastDocumentUrl, sizeOldFile } = await DocumentModel.deleteStudentDocumentByIndex(req.user.id, student_id, type, fileIndex);
 
     await deleteDoc_aws(lastDocumentUrl);
 
@@ -715,3 +971,572 @@ export const deleteDocument = async (req, res, next) => {
   }
 };
 
+
+
+
+export const TeacherDocumentUpload = async (req, res, next) => {
+
+  try {
+
+    const { year, teacher_id, title, type, fileType, fileSize, extension, fileName, teacher_school_id } = req.body;
+
+    if (!year) throw new Error("year is missing")
+    if (!teacher_id) throw new Error("Teacher ID is missing")
+    if (!title) throw new Error("title is missing")
+    if (!type) throw new Error("type is missing")
+    if (!fileType) throw new Error("fileType is missing")
+    if (!fileSize) throw new Error("fileSize is missing")
+    if (!extension) throw new Error("extension is missing")
+    if (!fileName) throw new Error("fileName is missing")
+    if (!teacher_school_id) throw new Error("teacher_school_id is missing")
+
+    const { total_gb, used_gb } = await SchoolModel.getSchoolById(req.user.id);
+
+
+    // Convert bytes → GB (float)
+    const fileSizeInGB = fileSize / (1024 * 1024 * 1024);
+
+    // Convert used_gb to number (it may be string)
+    const usedGBNumeric = Number(used_gb) || 0;
+    const totalGBNumeric = Number(total_gb) || 0;
+
+    // Check storage limit
+    if (usedGBNumeric + fileSizeInGB > totalGBNumeric) {
+      return res
+        .status(400)
+        .json(apiResponse(false, "Storage limit exceeded. Please upgrade your plan or delete old files.", [], req.rrn));
+    }
+
+    const sizeMB = fileSize / (1024 * 1024); // Convert to MB
+    if (sizeMB > 50) {
+      throw new Error("50 MB Max")
+    }
+
+    const { uploadUrl, key } = await getUploadUrl_aws({ fileName, fileType, folder_name: 'school_' + req.user.id + "/T_" + teacher_id, UniqueFileName: type + "_" + req.rrn });
+
+    await DocumentModel.updateTeacherDocumentList(req.user.id, type, title, key, fileSize, year, teacher_id);
+    await SchoolModel.updateStorage(req.user.id, fileSize)
+
+    return res.json(apiResponse(true, "Document Uplaoded", { uploadUrl }, req.rrn));
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+
+export const getTeacherDocument = async (req, res, next) => {
+
+  try {
+
+    const { teacher_id } = req.body;
+    if (!teacher_id) throw new Error("Student Id is missing")
+
+    const datas = await DocumentModel.getByTeacherId(req.user.id, teacher_id);
+
+    if (!datas || datas.length === 0) {
+      return res.json(apiResponse(true, "Document List", [], req.rrn));
+    }
+
+    // final output array
+    let allFiles = [];
+
+    for (const data of datas) {
+      if (!data.files || data.files.length === 0) continue;
+
+      const updatedFiles = await Promise.all(
+        data.files.map(async (item, i) => {
+          item.o_url = item.url;
+          item.download_url = await getDownloadUrl_aws(item.url);
+          item.url = await getCachedViewUrl(item.url);
+          item.type = data.document_type
+          item.index = i
+          return item;
+        })
+      );
+
+      allFiles.push(...updatedFiles);
+    }
+
+    return res.json(apiResponse(true, "Document List", allFiles, req.rrn));
+
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+
+
+export const TeacherDocumentUpdate = async (req, res, next) => {
+
+  try {
+
+    const { title, year, type, teacher_id, fileType, fileSize, extension, fileName, index, teacher_school_id } = req.body;
+
+    const fileIndex = index;
+
+    if (!title) throw new Error("title is missing")
+    if (!year) throw new Error("year is missing")
+    if (!type) throw new Error("type is missing")
+    if (!teacher_id) throw new Error("teacher id is missing")
+
+    if (!teacher_school_id) throw new Error("teacher School id is missing")
+
+    if (fileType && fileName) {
+
+      if (!fileType) throw new Error("fileType is missing")
+      if (!fileSize) throw new Error("fileSize is missing")
+      if (!extension) throw new Error("extension is missing")
+      if (!fileName) throw new Error("fileName is missing")
+      if (fileIndex < 0) throw new Error("fileIndex is missing")
+
+      const { total_gb, used_gb } = await SchoolModel.getSchoolById(req.user.id);
+
+
+      // Convert bytes → GB (float)
+      const fileSizeInGB = fileSize / (1024 * 1024 * 1024);
+
+      // Convert used_gb to number (it may be string)
+      const usedGBNumeric = Number(used_gb) || 0;
+      const totalGBNumeric = Number(total_gb) || 0;
+
+      // Check storage limit
+      if (usedGBNumeric + fileSizeInGB > totalGBNumeric) {
+        return res
+          .status(400)
+          .json(apiResponse(false, "Storage limit exceeded. Please upgrade your plan or delete old files.", [], req.rrn));
+      }
+
+
+
+      const sizeMB = fileSize / (1024 * 1024); // Convert to MB
+      if (sizeMB > 50) {
+        throw new Error("50 MB Max")
+      }
+
+      const { uploadUrl, key } = await getUploadUrl_aws({ fileName, fileType, folder_name: 'school_' + req.user.id + "/T_" + teacher_id, UniqueFileName: type + "_" + req.rrn });
+
+      const lastDocumentUrl = await DocumentModel.updateTeacherDocumentByIndex(req.user.id, teacher_id, type, title, key, fileSize, fileIndex, year);
+
+      await deleteDoc_aws(lastDocumentUrl);
+      await SchoolModel.updateStorage(req.user.id, fileSize)
+      return res.json(apiResponse(true, "Document Updated", { uploadUrl }, req.rrn));
+    } else {
+      await DocumentModel.updateTeacherDocumentByIndex(req.user.id, teacher_id, type, title, null, null, fileIndex, year);
+      return res.json(apiResponse(true, "Document Updated", {}, req.rrn));
+
+    }
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+
+
+export const deleteTeacherDocument = async (req, res, next) => {
+
+  try {
+
+    const { id, type, teacher_id } = req.body;
+    if (!teacher_id) throw new Error("student id is missing")
+    if (!type) throw new Error("type is missing")
+    if (id < 0) throw new Error("fileIndex is missing")
+
+    const fileIndex = id
+    const { lastDocumentUrl, sizeOldFile } = await DocumentModel.deleteTeacherDocumentByIndex(req.user.id, teacher_id, type, fileIndex);
+
+    await deleteDoc_aws(lastDocumentUrl);
+
+    // const schoolStorageBytes = await getFolderSize_aws('school_'+req.user.id)
+    // const in_gb = schoolStorageBytes/ 1024.0 / 1024.0 / 1024.0;
+    await SchoolModel.updateStorage(req.user.id, -sizeOldFile)
+
+
+    return res.json(apiResponse(true, "Document Deleted", {}, req.rrn));
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+export const cronUpdateSchoolStorage = async (req, res) => {
+
+  const allSchool = await SchoolModel.getAllSchools_OnlyId();
+
+  allSchool.map(async (item) => {
+
+    const FolderName = 'school_' + item.school_id;
+
+    const getAWS_Used_Storage_bytes = await getFolderSize_aws(FolderName)
+
+    const usedGb = getAWS_Used_Storage_bytes / 1024.0 / 1024.0 / 1024.0
+    // console.log(FolderName +" : "+usedGb);
+
+    await SchoolModel.updateSchool(item.school_id, { used_gb: usedGb })
+
+  })
+
+  return "Done";
+
+};
+
+export const teacherDocumentDownload = async (req, res, next) => {
+
+  try {
+
+    const { teacher_id } = req.body;
+    if (!teacher_id) throw new Error("Student Id is missing")
+
+    const documents = await DocumentModel.getByTeacherId(req.user.id, teacher_id);
+
+    // final output array
+    let allFiles = [];
+
+    for (const data of documents) {
+      if (!data.files || data.files.length === 0) continue;
+
+      const updatedFiles = await Promise.all(
+        data.files.map(async (item, i) => {
+          item.o_url = item.url;
+          item.download_url = await getDownloadUrl_aws(item.url);
+          item.url = await getCachedViewUrl(item.url);
+          item.type = data.document_type
+          item.index = i
+          return item;
+        })
+      );
+
+      allFiles.push(...updatedFiles);
+    }
+
+
+    if (allFiles.length === 0) {
+      return res.status(400).json({ message: "No documents found" });
+    }
+
+
+    return downloadMultipleFromS3(allFiles, res);
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+
+
+export const studentDocumentDownload = async (req, res, next) => {
+
+  try {
+
+    const { student_id } = req.body;
+    if (!student_id) throw new Error("Student Id is missing")
+
+    const documents = await DocumentModel.getByStudentId(req.user.id, student_id);
+
+    // final output array
+    let allFiles = [];
+
+    for (const data of documents) {
+      if (!data.files || data.files.length === 0) continue;
+
+      const updatedFiles = await Promise.all(
+        data.files.map(async (item, i) => {
+          item.o_url = item.url;
+          item.download_url = await getDownloadUrl_aws(item.url);
+          item.url = await getCachedViewUrl(item.url);
+          item.type = data.document_type
+          item.index = i
+          return item;
+        })
+      );
+
+      allFiles.push(...updatedFiles);
+    }
+
+
+    if (allFiles.length === 0) {
+      return res.status(400).json(apiResponse(false, "No Document Found", {}, req.rrn));
+
+    }
+
+
+    return downloadMultipleFromS3(allFiles, res);
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+
+// New code
+
+export const NewTemplates = async (req, res, next) => {
+
+  try {
+
+    const { templateName, image, fields } = req.body;
+
+    if (!templateName) throw new Error("Template Name is missing");
+    if (!image) throw new Error("Image is missing");
+    if (!fields || fields.length === 0) throw new Error("Fields are missing");
+
+
+    const { total_gb, used_gb } = await SchoolModel.getSchoolById(req.user.id);
+
+    const fileSize = image.size
+    const fileType = image.type
+    const fileName = image.name
+
+    // Convert bytes → GB (float)
+    const fileSizeInGB = fileSize / (1024 * 1024 * 1024);
+
+    // Convert used_gb to number (it may be string)
+    const usedGBNumeric = Number(used_gb) || 0;
+    const totalGBNumeric = Number(total_gb) || 0;
+
+    // Check storage limit
+    if (usedGBNumeric + fileSizeInGB > totalGBNumeric) {
+      return res
+        .status(400)
+        .json(apiResponse(false, "Storage limit exceeded. Please upgrade your plan or delete old files.", [], req.rrn));
+    }
+
+    const sizeMB = fileSize / (1024 * 1024); // Convert to MB
+    if (sizeMB > 50) {
+      throw new Error("50 MB Max")
+    }
+
+    const { uploadUrl, key } = await getUploadUrl_aws({ fileName, fileType, folder_name: 'school_' + req.user.id + "/Template", UniqueFileName: templateName + "_" + req.rrn });
+
+    await SchoolModel.updateStorage(req.user.id, fileSize)
+
+    await SchoolTemplateModel.createTemplate({ school_id: req.user.id, name: templateName, url: key, fields });
+
+    return res.json(apiResponse(true, "Template Created Successfully", { uploadUrl }, req.rrn));
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+
+export const getTemplates = async (req, res, next) => {
+
+  try {
+
+    const templates_temp = await SchoolTemplateModel.findBySchoolId(req.user.id);
+
+     const templates = await Promise.all(
+      templates_temp.map(async (item) => {
+        item.url = await getCachedViewUrl(item.url);
+        return item;
+      })
+    );
+
+
+    return res.json(apiResponse(true, "Templates fetched successfully", templates, req.rrn));
+    
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+export const getPreSignedUrls = async (req, res, next) => {
+
+  try {
+
+
+    const { templateId, files } = req.body;
+
+    if (!templateId) throw new Error("Template ID is missing");
+    if (!files || files.length === 0) throw new Error("Files are missing");
+
+
+    const template = await SchoolTemplateModel.findById(templateId);
+    if (!template) throw new Error("Template not found");
+
+    const fields = template.fields;
+
+    const preSignedUrls = await Promise.all(
+      files.map(async (file, index) => {
+        const { fileName, fileType } = file;
+        if (!fileName) throw new Error("File Name is missing");
+        if (!fileType) throw new Error("File Type is missing");
+
+        const { uploadUrl, key } = await getUploadUrl_aws({ fileName, fileType, folder_name: 'school_' + req.user.id, UniqueFileName: templateId + "_" + req.rrn + "_" + index });
+
+        const newDocument = await UploadDocumentModel.createDocument({
+          template_fields: fields,
+          school_id: req.user.id,
+          school_template_id: templateId,
+          ai_res: "{}",
+          original_file: key,
+          template_file: "/pending",
+          status: "Pending",
+        })
+
+        return { uploadUrl, key, document_id: newDocument.document_id, fileName };
+      })
+    );
+
+    return res.json(apiResponse(true, "Pre-signed URLs generated successfully", preSignedUrls, req.rrn));
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+};
+
+export const completeUpload_scan = async (req, res, next) => {
+  try {
+
+    const { templateId, documentIds } = req.body;
+
+    if (!templateId) throw new Error("Template ID is missing");
+    if (!documentIds || documentIds.length === 0) throw new Error("Document IDs are missing");
+
+    const documents = await UploadDocumentModel.findByIds(documentIds);
+    const result = [];
+    // console.log(documents)
+    await Promise.all(
+      documents.map(async (doc) => {
+        const Aws_url = await getCachedViewUrl(doc.original_file);
+        const Fields = doc.template_fields.map(f => f.id);
+
+        const ai_res = await extractFormFields_aws(
+          Aws_url,
+          Fields.toString()
+        );
+
+        const updatedDoc = await UploadDocumentModel.updateDocument(doc.document_id, {
+          ai_res: JSON.stringify(ai_res)
+        });
+
+        result.push({ doc: updatedDoc, Aws_url, Fields })
+      })
+    );
+
+    // console.log(result)
+    return res.json(apiResponse(true, "Documents completed successfully", result, req.rrn));
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+}
+
+export const GenerateScanDocument = async (req, res, next) => {
+  try {
+
+    const { DocIds } = req.body;
+
+    if (!DocIds || DocIds.length === 0) throw new Error("Document IDs are missing");
+    const documents = await UploadDocumentModel.findByIds(DocIds);
+
+
+    await Promise.all(
+      documents.map(async (doc) => {
+        try {
+
+          const template_id = doc.school_template_id;
+          const Fields = doc.template_fields;
+          const ai_res = doc.ai_res;
+
+          const template = await SchoolTemplateModel.findById(template_id);
+          const template_url = await getCachedViewUrl(template.url);
+
+          console.log(template_url)
+          console.log(Fields)
+          console.log(ai_res)
+
+          const scanCopyUrl = await fillTemplate(template_url, Fields, ai_res, req.user.id);
+
+          await UploadDocumentModel.updateDocument(doc.document_id, {
+            template_file: scanCopyUrl,
+            status: "Completed",
+          });
+
+        } catch (err) {
+          console.error(err)
+        }
+      })
+    )
+
+    return res.json(apiResponse(true, "Documents Scan successfully", {}, req.rrn));
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+}
+
+export const getAllSchoolDocuments = async (req, res, next) => {
+  try {
+
+    const Documents = await UploadDocumentModel.findBySchoolId(req.user.id);
+
+
+    const updatedData = await Promise.all(
+      Documents.map(async (item) => {
+        if (item.template_file) {
+          item.template_file = await getViewUrl_aws_download(item.template_file);
+        }
+
+        if (item.original_file) {
+          item.original_file = await getCachedViewUrl(item.original_file);
+        }
+
+        
+        return item;
+      })
+    );
+
+
+    return res.json(apiResponse(true, "Documents ", updatedData, req.rrn));
+    
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+}
+
+export const deleteTemplate = async (req, res, next) => {
+  try {
+
+    const { id } = req.body;
+
+    if(!id) throw new Error("Template ID is missing"); 
+
+    const template = await SchoolTemplateModel.findById(id);
+
+    await deleteDoc_aws(template.url);
+    
+    await SchoolTemplateModel.deleteTemplate(id);
+
+    return res.json(apiResponse(true, "Template Deleted", {}, req.rrn));
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+}
+
+
+export const deleteDocument = async (req, res, next) => {
+  try {
+
+    const { id } = req.body;
+
+    if(!id) throw new Error("Document ID is missing"); 
+
+    const document = await UploadDocumentModel.findById(id);
+
+    await deleteDoc_aws(document.template_file);
+    await deleteDoc_aws(document.original_file);
+    
+    await UploadDocumentModel.deleteDocument(id);
+
+    return res.json(apiResponse(true, "Document Deleted", {}, req.rrn));
+
+  } catch (err) {
+    next(err); // forward error to middleware
+  }
+}

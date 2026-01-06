@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+import archiver from "archiver";
 
 const urlCache = new Map();
 
@@ -68,6 +69,34 @@ export async function getViewUrl_aws(key) {
   const cmd = new GetObjectCommand({
     Bucket: process.env.S3_BUCKET,
     Key: key
+  });
+
+  return await getSignedUrl(s3, cmd, { expiresIn: 600 });
+}
+
+export async function getViewUrl_aws_download(key) {
+  if (!key) throw new Error("key required");
+
+  const fileName = key.split("/").pop(); // optional
+
+  const cmd = new GetObjectCommand({
+    Bucket: process.env.S3_BUCKET,
+    Key: key,
+
+    // 🔥 This forces download
+    ResponseContentDisposition: `attachment; filename="${fileName}"`,
+  });
+
+  return await getSignedUrl(s3, cmd, { expiresIn: 600 });
+}
+
+export async function getDownloadUrl_aws(key) {
+  const fileName = key.split("/").pop();
+
+  const cmd = new GetObjectCommand({
+    Bucket: process.env.S3_BUCKET,
+    Key: key,
+    ResponseContentDisposition: `attachment; filename="${fileName}"`
   });
 
   return await getSignedUrl(s3, cmd, { expiresIn: 600 });
@@ -196,4 +225,71 @@ export async function getFolderSize_aws(prefix) {
     console.error("Error getting folder size:", err);
     throw err;
   }
+}
+export async function downloadMultipleFromS3(files, res) {
+  if (!files || files.length === 0) {
+    throw new Error("No S3 files provided");
+  }
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=Documents_${Date.now()}.zip`
+  );
+
+  const archive = archiver("zip", { zlib: { level: 9 } });
+  archive.pipe(res);
+
+  const usedNames = new Set();  // ⭐ track duplicate names
+
+  for (const file of files) {
+    const key = file.o_url;
+    const title = file.title || "Document";
+
+    const cmd = new GetObjectCommand({
+      Bucket: process.env.S3_BUCKET,
+      Key: key,
+    });
+
+    const s3Response = await s3.send(cmd);
+    const fileStream = s3Response.Body;
+
+    const ext = key.split('.').pop();
+
+    let finalName = `${title}.${ext}`;
+
+    // ⭐ check duplicates
+    let counter = 1;
+    while (usedNames.has(finalName)) {
+      finalName = `${title}(${counter}).${ext}`;
+      counter++;
+    }
+
+    usedNames.add(finalName);
+
+    archive.append(fileStream, { name: finalName });
+  }
+
+  await archive.finalize();
+}
+
+
+export async function uploadBufferToS3({
+  buffer,
+  folder,
+  contentType = "image/png",
+  extension = ".png"
+}) {
+  const fileName = `scan_${uuidv4()}${extension}`
+  const key = `${process.env.isProd === "true" ? "" : "test/"}${folder}/${fileName}`
+
+  const cmd = new PutObjectCommand({
+    Bucket: process.env.S3_BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType
+  })
+
+  await s3.send(cmd)
+  return key
 }

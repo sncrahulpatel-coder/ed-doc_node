@@ -1,8 +1,8 @@
 {
-    "table_name": "document",
+    "table_name": "school_template",
     "fields": [
       {
-        "name": "document_id",
+        "name": "school_template_id",
         "type": "SERIAL PRIMARY KEY"
       },
        {
@@ -10,19 +10,15 @@
         "type": "int"
       },
       {
-        "name": "student_id",
-        "type": "int DEFAULT 0"
-      },
-      {
-        "name": "teacher_id",
-        "type": "int DEFAULT 0"
-      },
-      {
-        "name": "document_type",
+        "name": "name",
         "type": "VARCHAR(255) NOT NULL"
       },
        {
-        "name": "files",
+        "name": "url",
+        "type": "VARCHAR(255) NOT NULL"
+      },
+       {
+        "name": "fields",
         "type": "JSON"
       },
       {

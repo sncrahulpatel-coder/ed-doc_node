@@ -1,5 +1,5 @@
 {
-    "table_name": "document",
+    "table_name": "upload_document",
     "fields": [
       {
         "name": "document_id",
@@ -10,20 +10,28 @@
         "type": "int"
       },
       {
-        "name": "student_id",
-        "type": "int DEFAULT 0"
+        "name": "school_template_id",
+        "type": "int"
       },
       {
-        "name": "teacher_id",
-        "type": "int DEFAULT 0"
+        "name": "template_fields",
+        "type": "JSON"
       },
       {
-        "name": "document_type",
+        "name": "ai_res",
+        "type": "VARCHAR(255) NOT NULL"
+      },
+      {
+        "name": "original_file",
+        "type": "VARCHAR(255) NOT NULL"
+      },
+            {
+        "name": "template_file",
         "type": "VARCHAR(255) NOT NULL"
       },
        {
-        "name": "files",
-        "type": "JSON"
+        "name": "status",
+        "type": "VARCHAR(255) NOT NULL"
       },
       {
         "name": "created_at",
